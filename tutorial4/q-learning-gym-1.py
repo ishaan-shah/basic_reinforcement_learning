@@ -11,18 +11,22 @@ import gym
 import numpy
 import random
 import pandas
+from functools import reduce
+import matplotlib.pyplot as plt
 
 class QLearn:
-    def __init__(self, actions, epsilon, alpha, gamma):
+    def __init__(self, actions, epsilon, alpha, gamma, operator=1):
         self.q = {}
         self.epsilon = epsilon  # exploration constant
         self.alpha = alpha      # discount constant
         self.gamma = gamma      # discount factor
         self.actions = actions
+        self.operator = operator
 
     def getQ(self, state, action):
         return self.q.get((state, action), 0.0)
 
+    """
     def learnQ(self, state, action, reward, value):
         '''
         Q-learning:
@@ -33,6 +37,47 @@ class QLearn:
             self.q[(state, action)] = reward
         else:
             self.q[(state, action)] = oldv + self.alpha * (value - oldv)
+    """
+
+    def updateQBellman(self, currentState, action, nextState, reward):
+        '''
+        Q-learning:
+            Q(s, a) += alpha * (reward(s,a) + max(Q(s') - Q(s,a))
+        '''
+
+        Qvalue = self.q.get((currentState, action), None)
+        if Qvalue is None:
+            self.q[(currentState, action)] = reward
+        else:
+            rvalue = reward + self.gamma*max([self.getQ(nextState, a) for a in self.actions])
+            self.q[(currentState, action)] = Qvalue + self.alpha * (rvalue - Qvalue)
+
+    def updateQConsistent(self, currentState, action, nextState, reward):
+        '''
+        Q-learning:
+            Q(s, a) += alpha * (reward(s,a) + max(Q(s') - Q(s,a))
+        '''
+        Qvalue = self.q.get((currentState, action), None)
+        if Qvalue is None:
+            self.q[(currentState, action)] = reward
+        else:
+            if currentState != nextState:
+                rvalue = reward + self.gamma*max([self.getQ(nextState, a) for a in self.actions])
+            else:
+                rvalue = reward + self.gamma*Qvalue
+            self.q[(currentState, action)] = Qvalue + self.alpha * (rvalue - Qvalue)
+
+
+    def updateQRSO(self, currentState, action, nextState, reward):
+        Qvalue = self.q.get((currentState, action), None)
+        if Qvalue is None:
+            self.q[(currentState, action)] = reward
+        else:
+            beta = numpy.random.uniform(0,2)
+            bellmanValue = reward + self.gamma*max([self.getQ(nextState, a) for a in self.actions])
+            rvalue = bellmanValue - beta*(max([self.getQ(currentState, a) for a in self.actions]) - Qvalue)
+            self.q[(currentState, action)] = Qvalue + self.alpha * (rvalue - Qvalue)
+
 
     def chooseAction(self, state, return_q=False):
         q = [self.getQ(state, a) for a in self.actions]
@@ -59,8 +104,18 @@ class QLearn:
         return action
 
     def learn(self, state1, action1, reward, state2):
+        if self.operator == 1:
+            self.updateQBellman(state1,action1,state2,reward)
+        elif self.operator == 2:
+            self.updateQConsistent(state1,action1,state2,reward)
+        else:
+            self.updateQRSO(state1,action1,state2,reward)
+
+    """
+    def learn(self, state1, action1, reward, state2):
         maxqnew = max([self.getQ(state2, a) for a in self.actions])
         self.learnQ(state1, action1, reward, reward + self.gamma*maxqnew)
+    """
 
 def build_state(features):
     return int("".join(map(lambda feature: str(int(feature)), features)))
@@ -74,8 +129,8 @@ if __name__ == '__main__':
     # DEPRECATED as of 12/23/2016
     # env.monitor.start('/tmp/cartpole-experiment-1', force=True)
     #    # video_callable=lambda count: count % 10 == 0)
-    
-    env = gym.wrappers.Monitor(env, '/tmp/cartpole-experiment-1', force=True)
+
+    #env = gym.wrappers.Monitor(env, '/tmp/cartpole-experiment-1', force=True)
         # video_callable=lambda count: count % 10 == 0)
 
     goal_average_steps = 195
@@ -96,9 +151,9 @@ if __name__ == '__main__':
 
     # The Q-learn algorithm
     qlearn = QLearn(actions=range(env.action_space.n),
-                    alpha=0.5, gamma=0.90, epsilon=0.1)
+                    alpha=0.5, gamma=0.90, epsilon=0.1,operator=1)
 
-    for i_episode in xrange(3000):
+    for i_episode in range(3000):
         observation = env.reset()
 
         cart_position, pole_angle, cart_velocity, angle_rate_of_change = observation
@@ -107,7 +162,7 @@ if __name__ == '__main__':
                          to_bin(cart_velocity, cart_velocity_bins),
                          to_bin(angle_rate_of_change, angle_rate_bins)])
 
-        for t in xrange(max_number_of_steps):
+        for t in range(max_number_of_steps):
             # env.render()
 
             # Pick an action based on the current state
@@ -144,5 +199,5 @@ if __name__ == '__main__':
     print("Overall score: {:0.2f}".format(last_time_steps.mean()))
     print("Best 100 score: {:0.2f}".format(reduce(lambda x, y: x + y, l[-100:]) / len(l[-100:])))
 
-    env.monitor.close()
+    env.close()
     # gym.upload('/tmp/cartpole-experiment-1', algorithm_id='vmayoral simple Q-learning', api_key='your-key')

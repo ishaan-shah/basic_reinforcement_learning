@@ -1,0 +1,71 @@
+#!/bin/bash
+
+
+
+## ARGUMENTS ##
+
+total_runs="$1"
+num_of_parallel_runs="$2"
+script="$3"
+args_for_script=("${@:4}")
+
+if [ $# -lt 3 ]; then
+    echo "Not enough arguments provided"
+    echo 'Usage: ' "`basename "$0"`" '<total number of runs> <number of parallel runs> <path to script> <(optional) args for script>'
+    exit 1
+fi
+
+echo '============= START ============='
+
+
+
+## INITIALIZATION ##
+
+TIMESTAMP=`date "+%Y%m%d_%H%M%S"`
+
+LOG_DIR="logs"
+LOG_SUBDIR="`basename "$0"`"
+LOG_RUN_DIR="run_${TIMESTAMP}"
+
+LOG_PATH="${LOG_DIR%/}/${LOG_SUBDIR%/}/${LOG_RUN_DIR%/}"
+if [ ! -d "${LOG_PATH}" ]
+then
+    mkdir -p "${LOG_PATH}"
+fi
+
+running_jobs=()
+
+for ((i=0; i < ${num_of_parallel_runs}; i+=1))
+do
+    running_jobs[$i]="-1"
+done
+
+
+
+## MAIN ##
+
+run_index=0
+running_jobs_length=${#running_jobs[@]}
+
+while [[ ${run_index} -lt ${total_runs} ]]
+do
+    for ((i=0; i<${running_jobs_length}; i++))
+    do
+        temp_pid="${running_jobs[$i]}"
+        if ( [[ ${temp_pid} -lt 0 ]] || ! ps -p ${temp_pid} > /dev/null ) && [[ ${run_index} -lt ${total_runs} ]]
+        then
+            temp_log="${LOG_PATH%/}/run_${run_index}.log"
+            ( "${script}" "${args_for_script[@]}" ) >> "${temp_log}" 2>&1 &
+            running_jobs[$i]=$!
+            echo "Started: run ${run_index}"
+            run_index=$((${run_index} + 1))
+        fi
+    done
+    echo "log path: " "${LOG_PATH%/}"
+    echo "running jobs: " "${running_jobs[@]}"
+    sleep 5
+    echo
+done
+
+
+echo '========= == END == ============'
